@@ -1,0 +1,206 @@
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
+/**
+ * Conceptual Java + MongoDB application for a basic Branding Consistency Checker.
+ *
+ * This example simulates checking a piece of content's attributes (like name, slogan,
+ * and primary color hex code) against a 'Master Brand Profile' stored in MongoDB.
+ *
+ * NOTE: For a real application, use Spring Data MongoDB for better integration,
+ * proper connection pooling, and configuration management. This is a simple
+ * driver-based demonstration.
+ */
+public class BrandingCheckerApp {
+
+    // 1. Configuration Constants
+    private static final String MONGO_URI = "mongodb://localhost:27017";
+    private static final String DATABASE_NAME = "BrandingDB";
+    private static final String COLLECTION_NAME = "MasterProfiles";
+    private static final String MASTER_PROFILE_ID = "BrandX"; // The ID of the master profile to check against
+
+    // 2. Data Structures
+    /**
+     * Represents the official, correct branding attributes (Master Profile).
+     */
+    public static class MasterBrandProfile {
+        private String brandId;
+        private String officialBrandName;
+        private String officialSlogan;
+        private String officialPrimaryColorHex;
+
+        // Constructor for simplicity
+        public MasterBrandProfile(String brandId, String name, String slogan, String color) {
+            this.brandId = brandId;
+            this.officialBrandName = name;
+            this.officialSlogan = slogan;
+            this.officialPrimaryColorHex = color;
+        }
+
+        // Getters (omitted for brevity in this simple file, but conceptually present)
+        // For demonstration, we'll use the fields directly or convert from Document
+    }
+
+    /**
+     * Represents the branding attributes found in the content to be checked.
+     */
+    public static class ContentAttributes {
+        public String brandName;
+        public String slogan;
+        public String primaryColorHex;
+
+        public ContentAttributes(String name, String slogan, String color) {
+            this.brandName = name;
+            this.slogan = slogan;
+            this.primaryColorHex = color;
+        }
+    }
+
+    // 3. MongoDB Interaction
+    /**
+     * Initializes MongoDB with a master brand profile if it doesn't exist.
+     * @return MongoClient instance.
+     */
+    private static MongoClient initializeDatabase() {
+        try {
+            MongoClient mongoClient = MongoClients.create(MONGO_URI);
+            MongoDatabase database = mongoClient.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = database.getCollection(COLLECTION_NAME);
+
+            // Check if the master profile exists
+            Document existingProfile = collection.find(new Document("_id", MASTER_PROFILE_ID)).first();
+
+            if (existingProfile == null) {
+                // Insert a sample Master Profile
+                Document masterDoc = new Document("_id", MASTER_PROFILE_ID)
+                        .append("officialBrandName", "BrandX Corp.")
+                        .append("officialSlogan", "Innovate Today for Tomorrow.")
+                        .append("officialPrimaryColorHex", "#1A73E8"); // Blue
+                collection.insertOne(masterDoc);
+                System.out.println("✅ Master Brand Profile inserted into MongoDB.");
+            } else {
+                System.out.println("✅ Master Brand Profile already exists in MongoDB.");
+            }
+            return mongoClient;
+        } catch (Exception e) {
+            System.err.println("❌ Error connecting to or initializing MongoDB: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Fetches the Master Brand Profile from MongoDB.
+     */
+    private static MasterBrandProfile fetchMasterProfile(MongoClient mongoClient) {
+        if (mongoClient == null) return null;
+
+        MongoDatabase database = mongoClient.getDatabase(DATABASE_NAME);
+        MongoCollection<Document> collection = database.getCollection(COLLECTION_NAME);
+        Document doc = collection.find(new Document("_id", MASTER_PROFILE_ID)).first();
+
+        if (doc != null) {
+            return new MasterBrandProfile(
+                    doc.getString("_id"),
+                    doc.getString("officialBrandName"),
+                    doc.getString("officialSlogan"),
+                    doc.getString("officialPrimaryColorHex")
+            );
+        }
+        return null;
+    }
+
+    // 4. Core Logic
+    /**
+     * Performs the consistency check.
+     */
+    public static List<String> checkConsistency(MasterBrandProfile master, ContentAttributes content) {
+        List<String> inconsistencies = new ArrayList<>();
+
+        // Check Brand Name
+        if (!master.officialBrandName.equalsIgnoreCase(content.brandName)) {
+            inconsistencies.add("Brand Name Inconsistent: Found '" + content.brandName + "', Expected '" + master.officialBrandName + "'.");
+        }
+
+        // Check Slogan (simple exact match check)
+        if (!master.officialSlogan.equals(content.slogan)) {
+            inconsistencies.add("Slogan Inconsistent: Found '" + content.slogan + "', Expected '" + master.officialSlogan + "'.");
+        }
+
+        // Check Primary Color (case-insensitive hex code check)
+        if (!master.officialPrimaryColorHex.equalsIgnoreCase(content.primaryColorHex)) {
+            inconsistencies.add("Primary Color Inconsistent: Found '" + content.primaryColorHex + "', Expected '" + master.officialPrimaryColorHex + "'.");
+        }
+
+        return inconsistencies;
+    }
+
+    // 5. Main Execution
+    public static void main(String[] args) {
+        System.out.println("--- Branding Consistency Checker Startup ---");
+
+        // 5a. Database Initialization
+        MongoClient mongoClient = initializeDatabase();
+        if (mongoClient == null) {
+            System.out.println("Application terminated due to MongoDB connection error.");
+            return;
+        }
+
+        // 5b. Fetch Master Profile
+        MasterBrandProfile masterProfile = fetchMasterProfile(mongoClient);
+        if (masterProfile == null) {
+            System.out.println("❌ Master Brand Profile not found for ID: " + MASTER_PROFILE_ID);
+            mongoClient.close();
+            return;
+        }
+
+        System.out.println("\n--- Master Profile Loaded ---");
+        System.out.println("Official Name: " + masterProfile.officialBrandName);
+        System.out.println("Official Slogan: " + masterProfile.officialSlogan);
+        System.out.println("Official Color: " + masterProfile.officialPrimaryColorHex);
+
+        // 5c. Define Content to Check (Simulating data extracted from a document/website)
+        // Scenario 1: Consistent Content
+        ContentAttributes consistentContent = new ContentAttributes(
+                "BrandX Corp.",
+                "Innovate Today for Tomorrow.",
+                "#1A73E8"
+        );
+
+        // Scenario 2: Inconsistent Content
+        ContentAttributes inconsistentContent = new ContentAttributes(
+                "Brand X Corp",  // Extra space, different casing
+                "Innovate Today, For Tomorrow.", // Comma added
+                "#FF0000" // Red instead of Blue
+        );
+
+        // 5d. Run Checks and Display Results
+        runCheckAndDisplay("Consistent Content Check", masterProfile, consistentContent);
+        runCheckAndDisplay("Inconsistent Content Check", masterProfile, inconsistentContent);
+
+        // 5e. Cleanup
+        mongoClient.close();
+        System.out.println("\n--- Branding Consistency Checker Finished ---");
+    }
+
+    private static void runCheckAndDisplay(String title, MasterBrandProfile master, ContentAttributes content) {
+        System.out.println("\n--- " + title + " ---");
+        List<String> inconsistencies = checkConsistency(master, content);
+
+        if (inconsistencies.isEmpty()) {
+            System.out.println("✨ Result: Brand consistency is *PERFECT*.");
+        } else {
+            System.out.println("⚠ Result: *INCONSISTENCIES FOUND*:");
+            for (String issue : inconsistencies) {
+                System.out.println("  - " + issue);
+            }
+        }
+    }
+}
